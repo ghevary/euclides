@@ -38,17 +38,6 @@ class Config:
     speed_half_window_frames: int = 12  # net displacement over ~1 s: robust to tracking jitter
     stationary_speed_mps: float = 0.8
 
-    # --- ball held in the defending team's own penalty area (typically the goalkeeper) ---
-    # A keeper holding the ball is in play (Laws of the Game), but to the tracking it looks
-    # like a stoppage: the ball rests, or disappears in the keeper's arms.
-    held_ball: bool = True
-    held_radius_m: float = 1.5          # a defender this close has the ball in hands or at feet
-    held_lookback_s: float = 3.0        # the ball must have arrived in play, tracked, not from out
-    held_max_s: float = 8.0             # the Laws give a goalkeeper eight seconds; after that it
-                                        # is treated as an ordinary stoppage again
-    held_needs_opponent: bool = True    # an opponent must be inside that penalty area when the
-                                        # hold starts: at a goal kick or a free kick they may not be
-
     # --- per-frame evidence ---
     beta_per_m: float = 0.6             # slope of the nearest-player advantage
     influence_radius_m: float = 6.0     # evidence fades when nobody is near the ball

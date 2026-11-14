@@ -44,10 +44,9 @@ Only three files are read: `BAR-ATH_tactical_atd.xml`, `BAR-ATH_tactical_atd.txt
 ## Run
 
 ```bash
-python -m pytest                                  # 59 tests on synthetic data
+python -m pytest                                  # 51 tests on synthetic data
 python -m mtah audit                              # compares aggregates with DATA.md
 python -m mtah run --team <team_name>             # writes submissions/<team_name>.csv
-python -m mtah explain 1000 1500                  # why those frames got their labels (local only)
 ```
 
 Then check the exact file you will upload with the organisers' validator. Clone their
@@ -78,9 +77,6 @@ parser or the frame alignment is wrong, and nothing after it can be trusted.
      longer than an occlusion lasts.
    - *No ball:* gaps up to half a second are interpolated. Longer gaps give no evidence
      about the team, so the previous possession carries on.
-   - *Held ball:* a ball that rests or disappears with a defender on it inside their own
-     penalty area is a goalkeeper holding it, not a stoppage, for up to eight seconds and
-     only if it arrived in play with an attacker in the area.
 3. **Smart Tagging as a prior** (`tagging.py`). Attacking phases add a small push towards
    their tagged team. Set pieces mark the seconds before a restart as probably dead. A half
    that is graded from before its kick-off starts with a dead ball.
