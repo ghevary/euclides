@@ -41,10 +41,13 @@ def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
 
     # Dead ball: out of the pitch, motionless for a long time, or unseen for longer than an
     # occlusion lasts. Each is evidence, none is a rule: a slow ball alone is not a dead ball.
-    still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s)
+    # A ball held by a defender in their own penalty area (a goalkeeper, typically) rests or
+    # disappears without being dead, unless a tagged restart says otherwise.
+    not_held = 1.0 - feat.held.astype(np.float64) * (1.0 - np.clip(ctx.dead, 0.0, 1.0))
+    still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s) * not_held
     seen_logit = (_logit(cfg.dead_prior) + cfg.dead_w_out * feat.oob
                   + cfg.dead_w_stationary * still)
-    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s)
+    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s) * not_held
     neutral = 1.0 / 3.0
     missing_logit = _logit(neutral + (cfg.missing_dead_max - neutral) * unseen)
     dead_logit = np.where(feat.usable, seen_logit, missing_logit) + cfg.dead_w_setpiece * ctx.dead

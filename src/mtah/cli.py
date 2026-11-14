@@ -1,4 +1,4 @@
-"""Command line: `python -m mtah run|validate|audit`."""
+"""Command line: `python -m mtah run|validate|audit|explain`."""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .audit import audit
+from .explain import explain
 from .config import Config
 from .errors import MtahError
 from .paths import resolve_data_root
@@ -70,6 +71,14 @@ def cmd_audit(args) -> int:
     return 0
 
 
+def cmd_explain(args) -> int:
+    cfg = Config.load(args.config)
+    root = resolve_data_root(args.data_dir, args.allow_data_in_repo)
+    for line in explain(root, cfg, args.first, args.last, _cache(args)):
+        print(line)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mtah", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_aud = sub.add_parser("audit", help="aggregate sanity checks against published figures")
     common(p_aud, True)
     p_aud.set_defaults(func=cmd_audit)
+
+    p_exp = sub.add_parser("explain", help="why a range of frames got its labels (run locally)")
+    common(p_exp, True)
+    p_exp.add_argument("first", type=int, help="first video frame")
+    p_exp.add_argument("last", type=int, help="last video frame, inclusive")
+    p_exp.set_defaults(func=cmd_explain)
     return parser
 
 

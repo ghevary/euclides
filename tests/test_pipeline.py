@@ -62,3 +62,12 @@ def test_cli_run_validate_and_audit(bundle, tmp_path, capsys):
 def test_cli_reports_a_missing_data_directory(tmp_path, capsys):
     assert main(["run", "--data-dir", str(tmp_path / "nope"), "--no-cache"]) == 2
     assert "does not exist" in capsys.readouterr().out
+
+
+def test_explain_reports_shares_for_a_range(bundle):
+    from mtah.explain import explain
+    root, cfg, truth = bundle
+    lines = explain(root, cfg, 100, 449, None)
+    text = "\n".join(lines)
+    assert lines[0].startswith("frames 100..449") and "held-ball rule" in text
+    assert "H  100.0%" in text                      # the first home spell of the synthetic match

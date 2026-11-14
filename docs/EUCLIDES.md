@@ -28,8 +28,8 @@ same tracking format.
 | Tactical video | not by the pipeline | not decoded; watched in the read-only viewer (`src/viewer`) to debug, never to label |
 | Broadcast video and ATD | no | not synchronised with the tactical timeline |
 
-Without Smart Tagging (`use_tagging: false`) the output changes on 7,765 of the 158,857 graded
-frames (4.9%) and reports 316 possessions of mean 11.4 s instead of 290 of mean 12.1 s. We
+Without Smart Tagging (`use_tagging: false`) the output changes on 8,589 of the 158,857 graded
+frames (5.4%) and reports 314 possessions of mean 11.6 s instead of 291 of mean 12.2 s. We
 cannot say which is better: neither file was scored. We kept the tagging because the
 kick-off and restart priors encode football knowledge the tracking alone does not carry.
 
@@ -50,6 +50,16 @@ kick-off and restart priors encode football knowledge the tracking alone does no
 - **Restarts.** After a stoppage the first team with clear evidence gets the possession;
   a team tag on the set piece adds a short prior.
 - **Kick-off.** Graded frames before the tagged kick-off of a half are dead ball.
+- **Ball held by the goalkeeper.** A keeper holding the ball is in play, but in the tracking
+  the ball rests or disappears, which reads as a stoppage. So a resting or unseen ball does
+  not count as evidence of a dead ball while all of this holds: the ball is inside a
+  penalty area with a player of the defending team within 1.5 m; it arrived in play
+  (tracked through the three seconds before, and not from outside the pitch); an attacker
+  was inside that penalty area when the hold began; and no more than eight seconds have
+  passed. The last two come from the Laws of the Game: at a goal kick or a defending free
+  kick opponents must be outside the area, and a keeper may hold the ball for eight
+  seconds. Which goal each team defends is read from where the teams stand in each half.
+  The rule changes six stretches of the match, 1,161 frames in total.
 - **Minimum length.** Possessions and stoppages shorter than two seconds are merged into a
   neighbour.
 - **Abstention.** `X` is written only outside the graded halves.
@@ -62,7 +72,11 @@ kick-off and restart priors encode football knowledge the tracking alone does no
   previous one.
 - A stoppage during which the ball stays visible and moving, such as a player carrying it
   to a free kick, is not recognised as dead.
-- A goalkeeper holding the ball still for many seconds can be mistaken for a stoppage.
+- The tracking has no ball height and no player pose, so a ball in the keeper's hands, a
+  goal kick and a free kick look alike. The held-ball rule separates them by context only.
+  It misses a hold that follows a lost ball (a shot caught after the tracking dropped it),
+  a hold with no attacker in the area, and anything past eight seconds; it can also keep
+  alive a stoppage inside the area that happens to meet its conditions.
 - Smart Tagging is automatic and its errors are imported in proportion to its weight.
 - Track identities are not used, so nothing is known about control beyond proximity.
 
@@ -81,12 +95,12 @@ The submitted file `EUCLIDES.csv` passes the organisers' `validate_submission.py
 
 | Label | Frames | Share |
 |---|---|---|
-| H | 54,110 | 27.1% |
-| A | 33,471 | 16.8% |
-| D | 71,276 | 35.8% |
+| H | 55,083 | 27.6% |
+| A | 33,515 | 16.8% |
+| D | 70,259 | 35.2% |
 | X | 40,462 | 20.3% |
 
-It reports 290 possessions of mean 12.1 s. `X` is written only on the 40,462 ungraded
+It reports 291 possessions of mean 12.2 s. `X` is written only on the 40,462 ungraded
 frames. The file has not been scored: we did not use the public window to compare versions,
 so we have no `spellF1` to report against the baseline of 0.2433.
 
@@ -110,5 +124,5 @@ export MTAH_DATA_DIR=/path/to/bundle                   # the folder containing t
 python -m mtah run --team EUCLIDES
 ```
 
-Output SHA-256: `67f6a29f981c64f32c0336df9c31197fc89ee7934bd5e51794c503728b3597f5`, with
+Output SHA-256: `8fc784644a103c044eb0a834a34cd1d44f27e806c6efa19bf6824bf074263ae9`, with
 numpy 2.5.3 on Python 3.14. A second run on the same data gave the same bytes. The pipeline has no randomness.

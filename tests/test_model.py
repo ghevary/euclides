@@ -10,7 +10,8 @@ from mtah.temporal import decode
 def _features(n, **arrays):
     base = dict(seen=np.ones(n, bool), usable=np.ones(n, bool), d_home=np.full(n, 30.0),
                 d_away=np.full(n, 30.0), oob=np.zeros(n), still_run_s=np.zeros(n),
-                missing_run_s=np.zeros(n), speed=np.full(n, 5.0))
+                missing_run_s=np.zeros(n), speed=np.full(n, 5.0), held=np.zeros(n, bool), near_own=np.zeros(n, bool),
+                opp_in_box=np.zeros(n, bool))
     base.update(arrays)
     return Features(**base)
 

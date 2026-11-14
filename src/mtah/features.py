@@ -19,6 +19,9 @@ class Features:
     still_run_s: np.ndarray    # seconds: length of the motionless-ball run this frame belongs to
     missing_run_s: np.ndarray  # seconds: length of the no-ball run this frame belongs to
     speed: np.ndarray          # m/s net ball speed over about a second, NaN where unknown
+    held: np.ndarray           # bool: ball held by a defender in their own penalty area
+    near_own: np.ndarray       # bool: ball in a penalty area with a defender of that area on it
+    opp_in_box: np.ndarray     # bool: ball in a penalty area with an attacker inside that area
 
 
 def rolling_mean(x: np.ndarray, window: int) -> np.ndarray:
@@ -93,6 +96,89 @@ def slow_ball(ball_m: np.ndarray, cfg: Config):
     return speed, slow
 
 
+PENALTY_AREA_DEPTH_M = 16.5        # Laws of the Game
+PENALTY_AREA_HALF_WIDTH_M = 20.16
+
+
+def home_defends_low_x(players: np.ndarray, home: np.ndarray, cfg: Config) -> np.ndarray:
+    """Per frame: True where the home team defends the goal at x = 0.
+
+    Decided once per graded half from where the two teams stand on average, so it follows
+    the change of ends at halftime without any match-specific constant.
+    """
+    out = np.ones(len(players), dtype=bool)
+    step = max(1, int(cfg.fps))
+    with np.errstate(invalid="ignore"):
+        for first, last in cfg.segments:
+            first, last = max(0, int(first)), min(len(players) - 1, int(last))
+            if last < first:
+                continue
+            block = players[first:last + 1:step, :, 0].astype(np.float64)
+            hx, ax = block[:, home], block[:, ~home]
+            if np.isfinite(hx).any() and np.isfinite(ax).any():
+                out[first:last + 1] = np.nanmean(hx) <= np.nanmean(ax)
+    return out
+
+
+def _true_runs(mask: np.ndarray):
+    """[(start, stop)] of every run of True, stop exclusive."""
+    mask = np.asarray(mask, dtype=bool)
+    if len(mask) == 0:
+        return []
+    edges = np.flatnonzero(np.diff(np.concatenate(([False], mask, [False])).astype(np.int8)))
+    return list(zip(edges[::2].tolist(), edges[1::2].tolist()))
+
+
+def held_ball(usable: np.ndarray, slow: np.ndarray, out: np.ndarray, near_own: np.ndarray,
+              opp_in_box: np.ndarray, cfg: Config) -> np.ndarray:
+    """Frames where a resting or unseen ball is being held, not dead.
+
+    `near_own`: the ball is inside a penalty area with a player of the team defending it
+    within cfg.held_radius_m. A resting run counts as held when a defender is that close for
+    most of it; an unseen run when a defender was that close just before the ball vanished.
+    Either way the ball must have arrived in play: tracked through the seconds before, and
+    not from outside the pitch. That keeps goal kicks and other restarts, where the ball
+    comes back from out of play, as stoppages.
+
+    `opp_in_box`: an attacker is inside that same penalty area. A hold must start with one:
+    open play that ends in the keeper's hands has attackers in the area, while at a goal
+    kick or a defending free kick the Laws keep them out of it. One hold lasts at most
+    cfg.held_max_s.
+    """
+    n = len(usable)
+    held = np.zeros(n, dtype=bool)
+    if not cfg.held_ball or n == 0:
+        return held
+    look = max(1, int(round(cfg.held_lookback_s * cfg.fps)))
+    cap = max(1, int(round(cfg.held_max_s * cfg.fps)))
+    just = max(1, int(cfg.fps) // 2)
+    runs = [(a, b, True) for a, b in _true_runs(slow)] + [(a, b, False) for a, b in _true_runs(~usable)]
+    runs.sort()
+    chain_start = -1
+    for a, b, resting in runs:
+        lo = max(0, a - look)
+        if a == 0 or out[lo:a].any():
+            continue
+        before = usable[lo:a] | held[lo:a]
+        if before.mean() < 0.8:
+            continue
+        if resting:
+            if near_own[a:b].mean() < 0.5:
+                continue
+        elif near_own[max(0, a - just):a].mean() < 0.6:
+            continue
+        if not held[lo:a].any():
+            # a new hold, not the continuation of one: it must begin in open play
+            window = opp_in_box[a:min(b, a + int(cfg.fps))] if resting else opp_in_box[max(0, a - just):a]
+            if cfg.held_needs_opponent and not window.any():
+                continue
+            chain_start = a
+        stop = min(b, chain_start + cap)
+        if stop > a:
+            held[a:stop] = True
+    return held
+
+
 def build_features(tr: Tracking, cfg: Config) -> Features:
     scale = np.array([cfg.pitch_len_m, cfg.pitch_wid_m], dtype=np.float64)
     ball_n, seen, usable = interpolate_short_gaps(tr.ball, cfg.max_gap_frames)
@@ -112,4 +198,28 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     oob = rolling_mean(out.astype(np.float64), cfg.oob_window_frames)
 
     missing_run_s = run_lengths(~usable) / float(cfg.fps)
-    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed)
+
+    home_low = home_defends_low_x(tr.players, tr.home, cfg)
+    with np.errstate(invalid="ignore"):
+        in_width = np.abs(ball_m[:, 1] - cfg.pitch_wid_m / 2.0) <= PENALTY_AREA_HALF_WIDTH_M
+        low_box = in_width & (ball_m[:, 0] >= 0.0) & (ball_m[:, 0] <= PENALTY_AREA_DEPTH_M)
+        high_box = in_width & (ball_m[:, 0] <= cfg.pitch_len_m)             & (ball_m[:, 0] >= cfg.pitch_len_m - PENALTY_AREA_DEPTH_M)
+    d_low = np.where(home_low, d_home, d_away)    # nearest player of the team defending x = 0
+    d_high = np.where(home_low, d_away, d_home)
+    near_own = usable & ((low_box & (d_low <= cfg.held_radius_m))
+                         | (high_box & (d_high <= cfg.held_radius_m)))
+    # Is an attacker inside the penalty area the ball is in?
+    px = players_m[:, :, 0].astype(np.float64)
+    py = players_m[:, :, 1].astype(np.float64)
+    with np.errstate(invalid="ignore"):
+        p_width = np.abs(py - cfg.pitch_wid_m / 2.0) <= PENALTY_AREA_HALF_WIDTH_M
+        p_low = p_width & (px >= 0.0) & (px <= PENALTY_AREA_DEPTH_M)
+        p_high = p_width & (px <= cfg.pitch_len_m) & (px >= cfg.pitch_len_m - PENALTY_AREA_DEPTH_M)
+    home_cols, away_cols = tr.home, ~tr.home
+    att_low = np.where(home_low, p_low[:, away_cols].any(axis=1), p_low[:, home_cols].any(axis=1))
+    att_high = np.where(home_low, p_high[:, home_cols].any(axis=1), p_high[:, away_cols].any(axis=1))
+    opp_in_box = usable & ((low_box & att_low) | (high_box & att_high))
+
+    held = held_ball(usable, slow, out, near_own, opp_in_box, cfg)
+    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed, held,
+                    near_own, opp_in_box)
