@@ -1,6 +1,6 @@
 # Technical document
 
-Team: `EUCLIDES` · More than a Hack 2027, Phase 1 · repository: `<public URL>`
+Team: `EUCLIDES` · More than a Hack 2027, Phase 1 · repository: <https://github.com/ghevary/euclides>
 
 ## 1. Approach
 
