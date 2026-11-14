@@ -38,6 +38,20 @@ class Config:
     speed_half_window_frames: int = 12  # net displacement over ~1 s: robust to tracking jitter
     stationary_speed_mps: float = 0.8
 
+    # --- how fast the players move: the game is alive when somebody runs, stopped when all walk ---
+    use_player_motion: bool = True
+    player_pace_percentile: float = 90.0  # the fastest few, not the median: in open play most
+                                        # players walk too, but somebody is always running
+    player_min_tracked: int = 8         # fewer tracked players than this says nothing
+    player_max_mps: float = 12.0        # faster is a track swap, not a person
+    player_smooth_s: float = 2.0        # a stoppage is a state of the whole pitch, not an instant
+    player_slow_mps: float = 2.0        # prior: the usual walking/jogging boundary (about 7 km/h)
+    player_slow_auto: bool = True       # refine it from this match, without labels (Otsu)
+    player_slow_min_mps: float = 1.5    # the refined value must stay inside these priors
+    player_slow_max_mps: float = 3.0
+    player_speed_scale_mps: float = 0.5 # how far from the threshold before the evidence saturates
+    dead_w_players: float = 4.0         # logit weight: enough to decide a long stretch, not a moment
+
     # --- per-frame evidence ---
     beta_per_m: float = 0.6             # slope of the nearest-player advantage
     influence_radius_m: float = 6.0     # evidence fades when nobody is near the ball

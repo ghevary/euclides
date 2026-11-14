@@ -19,6 +19,7 @@ class Features:
     still_run_s: np.ndarray    # seconds: length of the motionless-ball run this frame belongs to
     missing_run_s: np.ndarray  # seconds: length of the no-ball run this frame belongs to
     speed: np.ndarray          # m/s net ball speed over about a second, NaN where unknown
+    slowness: np.ndarray       # [-1,1]: +1 everybody walking, -1 somebody running, 0 unknown
 
 
 def rolling_mean(x: np.ndarray, window: int) -> np.ndarray:
@@ -93,6 +94,79 @@ def slow_ball(ball_m: np.ndarray, cfg: Config):
     return speed, slow
 
 
+def player_pace(players_m: np.ndarray, cfg: Config) -> np.ndarray:
+    """Pace of the fastest few tracked players in m/s (cfg.player_pace_percentile of their
+    speeds), smoothed over cfg.player_smooth_s.
+
+    Speed is the net displacement of a track slot over about a second, like the ball's, so
+    position jitter does not read as movement. A slot that jumps faster than a person can
+    run has changed identity and is ignored. NaN where too few players are tracked.
+    """
+    n, h = len(players_m), max(1, int(cfg.speed_half_window_frames))
+    pace = np.full(n, np.nan)
+    if n <= 2 * h:
+        return pace
+    for a in range(h, n - h, 20000):
+        b = min(n - h, a + 20000)
+        delta = players_m[a + h:b + h].astype(np.float64) - players_m[a - h:b - h]
+        speed = np.hypot(delta[:, :, 0], delta[:, :, 1]) * cfg.fps / (2.0 * h)
+        with np.errstate(invalid="ignore"):
+            speed[speed > cfg.player_max_mps] = np.nan
+        enough = np.isfinite(speed).sum(axis=1) >= cfg.player_min_tracked
+        block = np.full(b - a, np.nan)
+        if enough.any():
+            block[enough] = np.nanpercentile(speed[enough], cfg.player_pace_percentile, axis=1)
+        pace[a:b] = block
+    known = np.isfinite(pace)
+    window = max(1, int(round(cfg.player_smooth_s * cfg.fps)))
+    total = rolling_mean(np.where(known, pace, 0.0), window)
+    share = rolling_mean(known.astype(np.float64), window)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        smooth = total / share
+    return np.where(known & (share > 0.5), smooth, np.nan)
+
+
+def slow_threshold(pace: np.ndarray, cfg: Config) -> float:
+    """The pace below which even the fastest players are walking: a stoppage rather than play.
+
+    Starts from the prior cfg.player_slow_mps. With cfg.player_slow_auto it is refined from
+    the graded frames of this match, without any label: the pace histogram has one group of
+    frames where nobody runs and one where somebody does, and the threshold is the bottom of
+    the valley between them. Only a valley inside the prior range counts, and only if the
+    histogram really rises on both sides of it; otherwise the prior stands.
+    """
+    prior = float(cfg.player_slow_mps)
+    if not cfg.player_slow_auto:
+        return prior
+    graded = np.zeros(len(pace), dtype=bool)
+    for first, last in cfg.segments:
+        graded[max(0, int(first)):int(last) + 1] = True
+    values = pace[graded & np.isfinite(pace)]
+    if len(values) < 1000:
+        return prior
+    hist, edges = np.histogram(values, bins=80, range=(0.0, 8.0))      # 0.1 m/s bins
+    density = rolling_mean(hist.astype(np.float64), 5)
+    centres = (edges[:-1] + edges[1:]) / 2.0
+    inside = np.flatnonzero((centres >= cfg.player_slow_min_mps) & (centres <= cfg.player_slow_max_mps))
+    if len(inside) == 0:
+        return prior
+    k = int(inside[np.argmin(density[inside])])
+    floor = density[k]
+    if density[:k].max(initial=0.0) <= 1.1 * floor or density[k + 1:].max(initial=0.0) <= 1.1 * floor:
+        return prior                                                     # no valley: one group only
+    return round(float(centres[k]), 3)
+
+
+def player_slowness(players_m: np.ndarray, cfg: Config) -> np.ndarray:
+    """+1 where everybody walks, -1 where somebody runs, 0 where unknown or switched off."""
+    if not cfg.use_player_motion:
+        return np.zeros(len(players_m))
+    pace = player_pace(players_m, cfg)
+    threshold = slow_threshold(pace, cfg)
+    z = np.clip((threshold - pace) / max(cfg.player_speed_scale_mps, 1e-9), -2.0, 2.0) / 2.0
+    return np.round(np.where(np.isfinite(pace), z, 0.0), 6)
+
+
 def build_features(tr: Tracking, cfg: Config) -> Features:
     scale = np.array([cfg.pitch_len_m, cfg.pitch_wid_m], dtype=np.float64)
     ball_n, seen, usable = interpolate_short_gaps(tr.ball, cfg.max_gap_frames)
@@ -112,4 +186,5 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     oob = rolling_mean(out.astype(np.float64), cfg.oob_window_frames)
 
     missing_run_s = run_lengths(~usable) / float(cfg.fps)
-    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed)
+    slowness = player_slowness(players_m, cfg)
+    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed, slowness)

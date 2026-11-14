@@ -41,12 +41,19 @@ def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
 
     # Dead ball: out of the pitch, motionless for a long time, or unseen for longer than an
     # occlusion lasts. Each is evidence, none is a rule: a slow ball alone is not a dead ball.
-    still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s)
+    # The players say whether the game is on. A ball that rests or disappears is a stoppage
+    # only if they are not running (a keeper holding it, a shielded ball: still alive), and
+    # a ball that is seen and moving is still dead if everybody walks (carried to a free kick).
+    # `gate` is 0 when they run, 1 when they walk, and 1 where their pace is unknown.
+    slow = feat.slowness
+    gate = np.where(slow < 0.0, 1.0 + slow, 1.0)
+    still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s) * gate
     seen_logit = (_logit(cfg.dead_prior) + cfg.dead_w_out * feat.oob
-                  + cfg.dead_w_stationary * still)
-    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s)
+                  + cfg.dead_w_stationary * still + cfg.dead_w_players * slow)
+    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s) * gate
     neutral = 1.0 / 3.0
-    missing_logit = _logit(neutral + (cfg.missing_dead_max - neutral) * unseen)
+    missing_logit = (_logit(neutral + (cfg.missing_dead_max - neutral) * unseen)
+                     + 0.5 * cfg.dead_w_players * slow)
     dead_logit = np.where(feat.usable, seen_logit, missing_logit) + cfg.dead_w_setpiece * ctx.dead
     p_dead = _sigmoid(dead_logit)
 

@@ -17,6 +17,7 @@ def small_config(**overrides) -> Config:
     cfg.n_frames = 3000
     cfg.segments = [[100, 1399], [1600, 2899]]
     cfg.home_name_hint = "homeville"
+    cfg.use_player_motion = False       # this match's players stand still; see test_player_motion
     for key, value in overrides.items():
         setattr(cfg, key, value)
     return cfg
