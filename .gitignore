@@ -1,0 +1,25 @@
+# --- competition data and anything derived from it: NEVER commit ---
+*.mp4
+*_atd.txt
+*_atd.xml
+*_homography.csv
+*_smart_tagging.xml
+*.npz
+*.npy
+*.parquet
+data/
+cache/
+reports_local/
+submissions/
+# --- python / tooling ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+# --- local tooling ---
+.claude/
+# --- internal planning notes ---
+PRD*.md

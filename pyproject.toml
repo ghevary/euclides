@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mtah-possession"
+version = "0.1.0"
+description = "More Than a Hack 2027, Phase 1: ball possession from automatic tracking data"
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+viewer = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]

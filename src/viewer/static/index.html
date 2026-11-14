@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Possession Viewer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Possession Viewer <span class="sub">MTAH 2027 · EUCLIDES</span></h1>
+  <div class="top-actions">
+    <label class="field">Sumber video
+      <select id="source"></select>
+    </label>
+    <button id="openVideo" type="button" title="Putar file video lain dari komputer ini (tidak diunggah)">Buka video…</button>
+    <input id="videoFile" type="file" accept="video/mp4,video/webm,.mp4,.m4v,.webm" hidden>
+    <span class="readonly" title="Label tidak bisa diedit dan tidak ada skor yang dihitung">hanya-baca</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="left">
+    <div id="stage" class="stage">
+      <video id="video" preload="metadata" playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div id="hud" class="hud"><span id="hudFrame">0</span><span id="hudLabel" class="chip">–</span></div>
+      <div id="stageMsg" class="stage-msg" hidden></div>
+    </div>
+
+    <div class="controls">
+      <button id="prevChange" type="button" title="Pergantian label sebelumnya ( [ )">⏮ Pergantian</button>
+      <button id="back1" type="button" title="Mundur 1 frame ( ← )">◀ 1</button>
+      <button id="play" type="button" class="primary" title="Putar / jeda ( Spasi )">▶ Putar</button>
+      <button id="fwd1" type="button" title="Maju 1 frame ( → )">1 ▶</button>
+      <button id="nextChange" type="button" title="Pergantian label berikutnya ( ] )">Pergantian ⏭</button>
+      <label class="field">Kecepatan
+        <select id="speed">
+          <option value="0.25">0,25×</option>
+          <option value="0.5">0,5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+      <form id="jumpForm" class="jump">
+        <label class="field">Ke frame
+          <input id="jump" type="text" inputmode="numeric" autocomplete="off" placeholder="mis. 11185">
+        </label>
+        <button type="submit">Lompat</button>
+      </form>
+      <label class="check"><input id="overlayToggle" type="checkbox" checked> Overlay tracking</label>
+      <button id="fullscreen" type="button" title="Layar penuh ( F )">⛶ Layar penuh</button>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="card big">
+      <div class="k">Frame</div>
+      <div id="frameNo" class="frame-no">0</div>
+      <div class="row2">
+        <div><div class="k">Waktu video</div><div id="time" class="v">00:00.00</div></div>
+        <div><div class="k">Babak</div><div id="half" class="v">–</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="k">Label <span id="nameA" class="fname"></span></div>
+      <div id="labelA" class="label-box lx">–</div>
+      <div id="segA" class="hint"></div>
+      <div id="rowB" hidden>
+        <div class="k">Pembanding <span id="nameB" class="fname"></span></div>
+        <div id="labelB" class="label-box small lx">–</div>
+        <div id="agree" class="hint"></div>
+      </div>
+      <div id="unsynced" class="warn" hidden>Video ini punya garis waktu sendiri (jumlah frame berbeda dari video tactical), jadi label tidak ditampilkan.</div>
+    </div>
+
+    <div class="card">
+      <div class="k">Tracking</div>
+      <table class="kv">
+        <tr><td>Bola terlihat</td><td id="ballSeen">–</td></tr>
+        <tr><td><span class="dot h"></span> Home terdekat</td><td id="distH">–</td></tr>
+        <tr><td><span class="dot a"></span> Away terdekat</td><td id="distA">–</td></tr>
+        <tr><td>Set piece (Smart Tagging)</td><td id="tagNow">–</td></tr>
+      </table>
+      <canvas id="pitch" width="300" height="194"></canvas>
+      <div id="trackMsg" class="hint"></div>
+    </div>
+
+    <div class="card">
+      <div class="k">File label</div>
+      <div class="btn-row">
+        <button id="loadA" type="button">Buka CSV…</button>
+        <button id="loadB" type="button">Bandingkan dengan CSV…</button>
+        <button id="clearB" type="button" hidden>Tutup pembanding</button>
+      </div>
+      <input id="fileA" type="file" accept=".csv,text/csv" hidden>
+      <input id="fileB" type="file" accept=".csv,text/csv" hidden>
+      <div class="btn-row" id="diffNav" hidden>
+        <button id="prevDiff" type="button">⏮ Beda</button>
+        <button id="nextDiff" type="button">Beda ⏭</button>
+      </div>
+      <div id="fileMsg" class="hint"></div>
+      <table class="kv" id="summary"></table>
+    </div>
+
+    <div class="card legend">
+      <span><i class="sw h"></i>H home</span>
+      <span><i class="sw a"></i>A away</span>
+      <span><i class="sw d"></i>D bola mati</span>
+      <span><i class="sw x"></i>X tidak dinilai</span>
+    </div>
+
+    <details class="card">
+      <summary>Pintasan papan ketik</summary>
+      <table class="kv keys">
+        <tr><td><kbd>Spasi</kbd></td><td>putar / jeda</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>mundur / maju 1 frame</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>1 detik</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>10 detik</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>pergantian label</td></tr>
+        <tr><td><kbd>G</kbd></td><td>ketik nomor frame</td></tr>
+        <tr><td><kbd>O</kbd></td><td>overlay</td></tr>
+        <tr><td><kbd>F</kbd></td><td>layar penuh</td></tr>
+      </table>
+    </details>
+  </aside>
+</main>
+
+<footer class="timeline">
+  <div class="tl-head">
+    <span>Garis waktu pertandingan</span>
+    <span id="tlTip" class="tl-tip"></span>
+  </div>
+  <div id="tlWrap" class="tl-wrap">
+    <canvas id="tl"></canvas>
+    <div id="tlCursor" class="tl-cursor"></div>
+  </div>
+  <div class="tl-head"><span>Detail ±10 detik (1 kolom = 1 frame)</span></div>
+  <div id="zoomWrap" class="tl-wrap">
+    <canvas id="zoom"></canvas>
+  </div>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
