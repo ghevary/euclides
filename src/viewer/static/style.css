@@ -1,4 +1,29 @@
+@font-face {
+  font-family: "OPPO Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("OPPOSans"), local("OPPOSans-Regular"), local("OPPO Sans"), local("OPPO Sans Regular"), local("Oppo Sans"), local("OppoSans");
+}
+
+@font-face {
+  font-family: "OPPO Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("OPPOSans-Medium"), local("OPPOSans Medium"), local("OPPO Sans Medium"), local("Oppo Sans Medium"), local("OPPOSans-Bold"), local("OPPO Sans Bold");
+}
+
+@font-face {
+  font-family: "OPPO Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("OPPOSans-Bold"), local("OPPO Sans Bold"), local("Oppo Sans Bold"), local("OppoSans-Bold");
+}
+
 :root {
+  --font-sans: "OPPOSans", "OPPO Sans", "Oppo Sans", "OppoSans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bg: #0f1216;
   --panel: #171b21;
   --card: #1e232b;
@@ -16,10 +41,13 @@
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font: 14px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  font: 14px/1.4 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   display: flex; flex-direction: column; min-height: 100vh;
 }
-button, select, input { font: inherit; color: inherit; }
+button, select, input, textarea, optgroup { font: inherit; color: inherit; }
+dialog, .modal { font-family: var(--font-sans); }
 button {
   background: var(--card); border: 1px solid var(--line); border-radius: 6px;
   padding: 6px 10px; cursor: pointer; white-space: nowrap;
