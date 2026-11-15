@@ -21,12 +21,24 @@ def main(argv=None) -> int:
     p.add_argument("--cache-dir", default=str(DEFAULT_CACHE))
     p.add_argument("--samples", type=int, default=300)
     p.add_argument("--conf", type=float, default=0.05)
+    v = sub.add_parser("preview", help="write annotated pictures to look at locally")
+    v.add_argument("--data-dir")
+    v.add_argument("--config")
+    v.add_argument("--cache-dir", default=str(DEFAULT_CACHE))
+    v.add_argument("--out", default="reports_local/yolo", help="folder for the pictures (gitignored)")
+    v.add_argument("--count", type=int, default=24)
+    v.add_argument("--conf", type=float, default=0.05)
     args = parser.parse_args(argv)
     try:
         cfg = Config.load(args.config)
         root = resolve_data_root(args.data_dir)
-        from .pilot import pilot
-        for line in pilot(root, cfg, Path(args.cache_dir), args.samples, args.conf):
+        if args.command == "preview":
+            from .preview import preview
+            lines = preview(root, cfg, Path(args.cache_dir), Path(args.out), args.count, args.conf)
+        else:
+            from .pilot import pilot
+            lines = pilot(root, cfg, Path(args.cache_dir), args.samples, args.conf)
+        for line in lines:
             print(line)
     except MtahError as error:
         print(f"error: {error}")
