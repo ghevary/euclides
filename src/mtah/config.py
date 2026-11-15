@@ -52,6 +52,13 @@ class Config:
     player_speed_scale_mps: float = 0.5 # how far from the threshold before the evidence saturates
     dead_w_players: float = 4.0         # logit weight: enough to decide a long stretch, not a moment
 
+    # --- players the tracking loses in a duel or a crowd ---
+    # Two players shoulder to shoulder are often reported as one. The one that vanished is
+    # still there, so a lost track keeps its last position for a moment when deciding who is
+    # nearest to the ball. The duel then reads as contested, and a contested ball stays with
+    # the team that had it (CHALLENGE.md), instead of jumping to whoever is still tracked.
+    player_hold_s: float = 1.5          # 0 switches it off
+
     # --- per-frame evidence ---
     beta_per_m: float = 0.6             # slope of the nearest-player advantage
     influence_radius_m: float = 6.0     # evidence fades when nobody is near the ball

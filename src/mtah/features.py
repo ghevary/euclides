@@ -63,6 +63,24 @@ def interpolate_short_gaps(ball: np.ndarray, max_gap: int):
     return out, seen, seen | fill
 
 
+def hold_last_position(players_m: np.ndarray, max_frames: int) -> np.ndarray:
+    """Each track slot keeps its last known position for up to `max_frames` after it is lost.
+
+    Only gaps are filled, and only forwards: nothing is invented before a track first appears.
+    """
+    if max_frames <= 0 or len(players_m) == 0:
+        return players_m
+    n = len(players_m)
+    known = np.isfinite(players_m).all(axis=2)
+    rows = np.arange(n)[:, None]
+    last = np.maximum.accumulate(np.where(known, rows, -1), axis=0)
+    fill = (~known) & (last >= 0) & ((rows - last) <= max_frames)
+    out = players_m.copy()
+    frame_idx, slot_idx = np.nonzero(fill)
+    out[frame_idx, slot_idx] = players_m[last[frame_idx, slot_idx], slot_idx]
+    return out
+
+
 def nearest_distance(players_m: np.ndarray, ball_m: np.ndarray, team: np.ndarray,
                      cap: float, chunk: int = 20000) -> np.ndarray:
     """Distance from the ball to the nearest tracked player of one team, capped at `cap`."""
@@ -173,8 +191,9 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     ball_m = ball_n * scale
     players_m = tr.players * scale.astype(np.float32)
 
-    d_home = nearest_distance(players_m, ball_m, tr.home, cfg.dist_cap_m)
-    d_away = nearest_distance(players_m, ball_m, ~tr.home, cfg.dist_cap_m)
+    held = hold_last_position(players_m, int(round(cfg.player_hold_s * cfg.fps)))
+    d_home = nearest_distance(held, ball_m, tr.home, cfg.dist_cap_m)
+    d_away = nearest_distance(held, ball_m, ~tr.home, cfg.dist_cap_m)
 
     speed, slow = slow_ball(ball_m, cfg)
     still_run_s = run_lengths(slow) / float(cfg.fps)
