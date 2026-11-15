@@ -185,6 +185,80 @@ def player_slowness(players_m: np.ndarray, cfg: Config) -> np.ndarray:
     return np.round(np.where(np.isfinite(pace), z, 0.0), 6)
 
 
+def home_defends_low_x(players: np.ndarray, home: np.ndarray, cfg: Config) -> np.ndarray:
+    """Per frame: True where the home team defends the goal at x = 0.
+
+    Decided once per graded half from where the two teams stand on average, so it follows
+    the change of ends at halftime without any match-specific constant.
+    """
+    out = np.ones(len(players), dtype=bool)
+    step = max(1, int(cfg.fps))
+    with np.errstate(invalid="ignore"):
+        for first, last in cfg.segments:
+            first, last = max(0, int(first)), min(len(players) - 1, int(last))
+            if last < first:
+                continue
+            block = players[first:last + 1:step, :, 0].astype(np.float64)
+            hx, ax = block[:, home], block[:, ~home]
+            if np.isfinite(hx).any() and np.isfinite(ax).any():
+                out[first:last + 1] = np.nanmean(hx) <= np.nanmean(ax)
+    return out
+
+
+def _true_runs(mask: np.ndarray):
+    """[(start, stop)] of every run of True, stop exclusive."""
+    mask = np.asarray(mask, dtype=bool)
+    if len(mask) == 0:
+        return []
+    edges = np.flatnonzero(np.diff(np.concatenate(([False], mask, [False])).astype(np.int8)))
+    return list(zip(edges[::2].tolist(), edges[1::2].tolist()))
+
+
+def team_by_frame(players_m: np.ndarray, home: np.ndarray, cfg: Config) -> np.ndarray:
+    """(n_frames, n_slots) bool, True where the slot is a home player on that frame.
+
+    The metadata team of each slot, except for tracklets that behave like a goalkeeper: for
+    at least cfg.keeper_share of a tracklet of cfg.keeper_min_run_s or more, it is the
+    deepest tracked player in front of one goal (within cfg.keeper_depth_m of the line and
+    inside the width of the penalty area). Such a tracklet belongs to the team defending
+    that goal. Every other slot keeps its metadata team.
+    """
+    home = np.asarray(home, dtype=bool)
+    n, s = players_m.shape[:2]
+    team = np.broadcast_to(home, (n, s)).copy()
+    if not cfg.keeper_fix or n == 0:
+        return team
+    x = players_m[:, :, 0].astype(np.float64)
+    y = players_m[:, :, 1].astype(np.float64)
+    known = np.isfinite(x) & np.isfinite(y)
+    with np.errstate(invalid="ignore"):
+        central = known & (np.abs(y - cfg.pitch_wid_m / 2.0) <= cfg.keeper_half_width_m)
+    rows = np.arange(n)
+    low_x = np.where(known, x, np.inf)
+    high_x = np.where(known, x, -np.inf)
+    low, high = np.argmin(low_x, axis=1), np.argmax(high_x, axis=1)
+    deep_low = np.zeros((n, s), dtype=bool)
+    deep_high = np.zeros((n, s), dtype=bool)
+    deep_low[rows, low] = low_x[rows, low] <= cfg.keeper_depth_m
+    deep_high[rows, high] = high_x[rows, high] >= cfg.pitch_len_m - cfg.keeper_depth_m
+    deep_low &= central
+    deep_high &= central
+
+    home_low = home_defends_low_x(players_m, home, cfg)[:, None]
+    keeper_home = (deep_low & home_low) | (deep_high & ~home_low)
+    keeper_away = (deep_low & ~home_low) | (deep_high & home_low)
+    min_len = max(1, int(round(cfg.keeper_min_run_s * cfg.fps)))
+    for slot in range(s):
+        for a, b in _true_runs(known[:, slot]):
+            if b - a < min_len:
+                continue
+            if not home[slot] and keeper_home[a:b, slot].mean() >= cfg.keeper_share:
+                team[a:b, slot] = True
+            elif home[slot] and keeper_away[a:b, slot].mean() >= cfg.keeper_share:
+                team[a:b, slot] = False
+    return team
+
+
 def build_features(tr: Tracking, cfg: Config) -> Features:
     scale = np.array([cfg.pitch_len_m, cfg.pitch_wid_m], dtype=np.float64)
     ball_n, seen, usable = interpolate_short_gaps(tr.ball, cfg.max_gap_frames)
@@ -192,8 +266,10 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     players_m = tr.players * scale.astype(np.float32)
 
     held = hold_last_position(players_m, int(round(cfg.player_hold_s * cfg.fps)))
-    d_home = nearest_distance(held, ball_m, tr.home, cfg.dist_cap_m)
-    d_away = nearest_distance(held, ball_m, ~tr.home, cfg.dist_cap_m)
+    team = team_by_frame(players_m, tr.home, cfg)[:, :, None]
+    everyone = np.ones(len(tr.home), dtype=bool)
+    d_home = nearest_distance(np.where(team, held, np.nan), ball_m, everyone, cfg.dist_cap_m)
+    d_away = nearest_distance(np.where(team, np.nan, held), ball_m, everyone, cfg.dist_cap_m)
 
     speed, slow = slow_ball(ball_m, cfg)
     still_run_s = run_lengths(slow) / float(cfg.fps)

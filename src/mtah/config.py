@@ -59,6 +59,16 @@ class Config:
     # the team that had it (CHALLENGE.md), instead of jumping to whoever is still tracked.
     player_hold_s: float = 1.5          # 0 switches it off
 
+    # --- goalkeepers put in the wrong team by the tracking ---
+    # A keeper wears a different kit from their team, so automatic team assignment can put
+    # them in the other team's track slots. A tracklet that is, most of the time it exists,
+    # the deepest player in front of one goal is that goal's keeper, whatever its slot says.
+    keeper_fix: bool = True
+    keeper_depth_m: float = 30.0        # within this distance of the goal line
+    keeper_half_width_m: float = 20.16  # and inside the width of the penalty area
+    keeper_min_run_s: float = 5.0       # tracklets shorter than this are left alone
+    keeper_share: float = 0.6           # share of the tracklet spent as that deepest player
+
     # --- per-frame evidence ---
     beta_per_m: float = 0.6             # slope of the nearest-player advantage
     influence_radius_m: float = 6.0     # evidence fades when nobody is near the ball
