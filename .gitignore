@@ -23,3 +23,5 @@ __pycache__/
 .claude/
 # --- internal planning notes ---
 PRD*.md
+# --- model weights: downloaded, never committed ---
+*.pt
