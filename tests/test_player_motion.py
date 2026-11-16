@@ -73,7 +73,8 @@ def _held_ball_match(n_hold):
     n = pre + n_hold + post
     players, home = _players(np.full(n, RUN))
     keeper = 21
-    players[pre:pre + n_hold, keeper] = players[pre, keeper]          # the keeper stands on it
+    sway = 0.01 * np.sin(np.arange(n_hold) / 7.0)[:, None]             # a person never freezes
+    players[pre:pre + n_hold, keeper] = players[pre, keeper] + sway   # the keeper stands on it
     ball = players[:, keeper] + (0.3, 0.2)
     return players, home, ball, (pre, pre + n_hold)
 

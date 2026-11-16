@@ -20,6 +20,7 @@ class Features:
     missing_run_s: np.ndarray  # seconds: length of the no-ball run this frame belongs to
     speed: np.ndarray          # m/s net ball speed over about a second, NaN where unknown
     slowness: np.ndarray       # [-1,1]: +1 everybody walking, -1 somebody running, 0 unknown
+    left: np.ndarray = None    # bool: ball unseen after it went over, or was heading over, a line
 
 
 def rolling_mean(x: np.ndarray, window: int) -> np.ndarray:
@@ -61,6 +62,43 @@ def interpolate_short_gaps(ball: np.ndarray, max_gap: int):
     w = ((idx[fill] - p) / (q - p))[:, None]
     out[fill] = ball[p] * (1.0 - w) + ball[q] * w
     return out, seen, seen | fill
+
+
+def drop_frozen(players_m: np.ndarray, min_frames: int) -> np.ndarray:
+    """Positions that stay exactly the same for `min_frames` or more become NaN.
+
+    The first frame of such a stretch is kept: it is where the player really was.
+    """
+    if min_frames <= 0 or len(players_m) < 2:
+        return players_m
+    same = np.zeros(players_m.shape[:2], dtype=bool)
+    same[1:] = (players_m[1:] == players_m[:-1]).all(axis=2)
+    out = players_m.copy()
+    for slot in range(same.shape[1]):
+        for a, b in _true_runs(same[:, slot]):
+            if b - a >= min_frames:
+                out[a:b, slot] = np.nan
+    return out
+
+
+def ball_left_pitch(ball_m: np.ndarray, usable: np.ndarray, cfg: Config) -> np.ndarray:
+    """True on unseen frames whose last seen ball was over a line or about to cross one."""
+    n = len(ball_m)
+    left = np.zeros(n, dtype=bool)
+    if n == 0:
+        return left
+    with np.errstate(invalid="ignore"):
+        edge = np.minimum.reduce([ball_m[:, 0], cfg.pitch_len_m - ball_m[:, 0],
+                                  ball_m[:, 1], cfg.pitch_wid_m - ball_m[:, 1]])
+    k = max(1, int(cfg.exit_heading_frames))
+    before = np.full(n, np.nan)
+    before[k:] = edge[:-k]
+    with np.errstate(invalid="ignore"):
+        leaving = usable & (edge <= cfg.exit_edge_m) & ((edge < 0.0) | (edge < before))
+    idx = np.arange(n)
+    last = np.maximum.accumulate(np.where(usable, idx, -1))
+    left = ~usable & (last >= 0) & leaving[np.maximum(last, 0)]
+    return left
 
 
 def hold_last_position(players_m: np.ndarray, max_frames: int) -> np.ndarray:
@@ -263,7 +301,8 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     scale = np.array([cfg.pitch_len_m, cfg.pitch_wid_m], dtype=np.float64)
     ball_n, seen, usable = interpolate_short_gaps(tr.ball, cfg.max_gap_frames)
     ball_m = ball_n * scale
-    players_m = tr.players * scale.astype(np.float32)
+    players_m = drop_frozen(tr.players * scale.astype(np.float32),
+                            int(round(cfg.ghost_frozen_s * cfg.fps)))
 
     held = hold_last_position(players_m, int(round(cfg.player_hold_s * cfg.fps)))
     team = team_by_frame(players_m, tr.home, cfg)[:, :, None]
@@ -282,4 +321,6 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
 
     missing_run_s = run_lengths(~usable) / float(cfg.fps)
     slowness = player_slowness(players_m, cfg)
-    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed, slowness)
+    left = ball_left_pitch(ball_m, usable, cfg)
+    return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed, slowness,
+                    left)

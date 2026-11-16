@@ -45,7 +45,11 @@ def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
     # only if they are not running (a keeper holding it, a shielded ball: still alive), and
     # a ball that is seen and moving is still dead if everybody walks (carried to a free kick).
     # `gate` is 0 when they run, 1 when they walk, and 1 where their pace is unknown.
-    slow = feat.slowness
+    # Once the ball is out of the pitch the players have no say: they are still running from
+    # the last action, but the game has stopped.
+    left = np.zeros(len(feat.oob)) if feat.left is None else feat.left.astype(np.float64)
+    out = np.maximum(feat.oob, left)
+    slow = np.where(feat.slowness < 0.0, feat.slowness * (1.0 - out), feat.slowness)
     gate = np.where(slow < 0.0, 1.0 + slow, 1.0)
     still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s) * gate
     seen_logit = (_logit(cfg.dead_prior) + cfg.dead_w_out * feat.oob
@@ -53,7 +57,7 @@ def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
     unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s) * gate
     neutral = 1.0 / 3.0
     missing_logit = (_logit(neutral + (cfg.missing_dead_max - neutral) * unseen)
-                     + 0.5 * cfg.dead_w_players * slow)
+                     + 0.5 * cfg.dead_w_players * slow + cfg.dead_w_out * left)
     dead_logit = np.where(feat.usable, seen_logit, missing_logit) + cfg.dead_w_setpiece * ctx.dead
     p_dead = _sigmoid(dead_logit)
 

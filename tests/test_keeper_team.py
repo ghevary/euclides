@@ -25,6 +25,7 @@ def _match(keeper_fix=True):
     players[:, 3] = (60.0, 30.0)                                          # away forward
     players[:, 4] = (75.0, 40.0)                                          # away midfielder
     players[:, 5] = (101.0, 34.0)                                         # away keeper
+    players += 0.01 * np.sin(t / 0.3)[:, None, None]                   # people sway, ghosts do not
     home = np.array([True, True, False, False, False, False])
     ball = np.empty((n, 2))
     phase = (np.arange(n) // (5 * FPS)) % 2

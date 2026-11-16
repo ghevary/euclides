@@ -35,6 +35,11 @@ class Config:
     dist_cap_m: float = 30.0            # so one stray track cannot dominate
     oob_margin_m: float = 1.5           # ball this far outside the lines counts as out
     oob_window_frames: int = 25
+    # A ball the tracking loses just after it crossed, or was heading over, a line has left
+    # the pitch: the camera stops following it. That is a stoppage at once, even though the
+    # players are still running from the last action.
+    exit_edge_m: float = 2.0            # last seen this close to a line (or beyond it)
+    exit_heading_frames: int = 5        # and getting nearer to it over these last frames
     speed_half_window_frames: int = 12  # net displacement over ~1 s: robust to tracking jitter
     stationary_speed_mps: float = 0.8
 
@@ -58,6 +63,13 @@ class Config:
     # nearest to the ball. The duel then reads as contested, and a contested ball stays with
     # the team that had it (CHALLENGE.md), instead of jumping to whoever is still tracked.
     player_hold_s: float = 1.5          # 0 switches it off
+
+    # --- ghost tracks ---
+    # A track whose position does not change by a single millimetre is not a person: a real
+    # player standing still still sways. The tracking leaves such a frozen copy behind when
+    # it loses someone, typically the goalkeeper, while the real player goes on in another
+    # slot. Frozen stretches this long are dropped as unknown.
+    ghost_frozen_s: float = 1.0         # 0 switches it off
 
     # --- goalkeepers put in the wrong team by the tracking ---
     # A keeper wears a different kit from their team, so automatic team assignment can put

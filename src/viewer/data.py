@@ -11,10 +11,10 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from mtah.atd import load_tracking, norm_text
+from mtah.atd import Tracking, load_tracking, norm_text
 from mtah.config import Config
 from mtah.errors import MtahError
-from mtah.features import nearest_distance
+from mtah.features import drop_frozen, nearest_distance, team_by_frame
 from mtah.submission import ALLOWED, validate_csv
 from mtah.tagging import load_instances, team_sign
 
@@ -104,6 +104,7 @@ class Store:
         self.tracking = None
         self.homography = None
         self.d_home = self.d_away = None
+        self.team = None
         self.track_state = "none" if not (atd_xml and atd_txt) else "loading"
         self.track_error = ""
         self._lock = threading.Lock()
@@ -118,15 +119,20 @@ class Store:
             tr = load_tracking(self.atd_xml, self.atd_txt, cfg, self.cache_dir)
             scale = np.array([cfg.pitch_len_m, cfg.pitch_wid_m], dtype=np.float64)
             ball_m = tr.ball.astype(np.float64) * scale
-            players_m = tr.players * scale.astype(np.float32)
+            # The same players the model sees: frozen ghosts dropped, keepers in their team.
+            players_m = drop_frozen(tr.players * scale.astype(np.float32),
+                                    int(round(cfg.ghost_frozen_s * cfg.fps)))
+            team = team_by_frame(players_m, tr.home, cfg)
+            tr = Tracking((players_m / scale.astype(np.float32)).astype(np.float32), tr.ball, tr.home)
             big = 1e6  # no cap here: the panel shows the real distance, however large
-            d_home = nearest_distance(players_m, ball_m, tr.home, big)
-            d_away = nearest_distance(players_m, ball_m, ~tr.home, big)
+            everyone = np.ones(len(tr.home), dtype=bool)
+            d_home = nearest_distance(np.where(team[:, :, None], players_m, np.nan), ball_m, everyone, big)
+            d_away = nearest_distance(np.where(team[:, :, None], np.nan, players_m), ball_m, everyone, big)
             hom = None
             if self.homography_path and Path(self.homography_path).is_file():
                 hom = load_homography(self.homography_path, cfg.n_frames, self.cache_dir)
             with self._lock:
-                self.tracking, self.homography = tr, hom
+                self.tracking, self.homography, self.team = tr, hom, team
                 self.d_home, self.d_away = d_home, d_away
                 self.track_state = "ready"
         except Exception as error:  # shown in the page instead of killing the server
@@ -179,7 +185,7 @@ class Store:
 
     def track_payload(self, start: int, count: int) -> dict:
         with self._lock:
-            state, tr, hom = self.track_state, self.tracking, self.homography
+            state, tr, hom, team = self.track_state, self.tracking, self.homography, self.team
             d_home, d_away = self.d_home, self.d_away
         if state != "ready":
             return {"state": state, "error": self.track_error, "start": start, "frames": []}
@@ -193,8 +199,8 @@ class Store:
             ball = tr.ball[i]
             has_ball = bool(np.isfinite(ball).all())
             item = {
-                "h": _flat(pts[seen & tr.home]),
-                "a": _flat(pts[seen & ~tr.home]),
+                "h": _flat(pts[seen & team[i]]),
+                "a": _flat(pts[seen & ~team[i]]),
                 "b": _flat(ball[None, :]) if has_ball else None,
                 "dh": _dist(d_home[i]) if has_ball else None,
                 "da": _dist(d_away[i]) if has_ball else None,
