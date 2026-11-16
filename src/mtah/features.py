@@ -81,6 +81,61 @@ def drop_frozen(players_m: np.ndarray, min_frames: int) -> np.ndarray:
     return out
 
 
+def drop_keeper_doubles(players_m: np.ndarray, home: np.ndarray, cfg: Config,
+                        chunk: int = 5000) -> np.ndarray:
+    """Drop the second copy of a goalkeeper the tracking follows in both teams at once."""
+    home = np.asarray(home, dtype=bool)
+    n, s = players_m.shape[:2]
+    if not cfg.dup_fix or n == 0 or s < 2:
+        return players_m
+    pm = players_m.astype(np.float64)
+    known = np.isfinite(pm).all(axis=2)
+    home_low = home_defends_low_x(pm, home, cfg)
+    mark = np.zeros((n, s), dtype=bool)      # this slot is the wrong-team copy on this frame
+    cols = np.arange(s)
+    # Each team's goalkeeper slot: the one most often the deepest player in front of a goal.
+    # The two keepers never stand side by side, so these two slots close together are one
+    # person even in a crowd; any other cross-team pair has to be alone to count.
+    with np.errstate(invalid="ignore"):
+        depth = np.minimum(pm[:, :, 0], cfg.pitch_len_m - pm[:, :, 0])
+        in_box = known & (depth <= cfg.dup_depth_m) & (
+            np.abs(pm[:, :, 1] - cfg.pitch_wid_m / 2.0) <= cfg.keeper_half_width_m)
+    deepest = np.argmin(np.where(in_box, depth, np.inf), axis=1)[in_box.any(axis=1)]
+    counts = np.bincount(deepest, minlength=s)
+    keeper = np.zeros(s, dtype=bool)
+    for side in (home, ~home):
+        if side.any() and counts[side].max() > 0:
+            keeper[np.flatnonzero(side)[np.argmax(counts[side])]] = True
+    for a in range(0, n, chunk):
+        b = min(n, a + chunk)
+        q = pm[a:b]
+        d = np.linalg.norm(q[:, :, None, :] - q[:, None, :, :], axis=3)
+        d = np.where(np.isfinite(d), d, np.inf)
+        d[:, cols, cols] = np.inf
+        close = (d < cfg.dup_radius_m).sum(axis=2)
+        crowd = (d < cfg.dup_clear_m).sum(axis=2)
+        partner = np.argmin(d, axis=2)
+        rows = np.arange(b - a)[:, None]
+        x, y = q[:, :, 0], q[:, :, 1]
+        with np.errstate(invalid="ignore"):
+            low_end = x <= cfg.dup_depth_m
+            high_end = x >= cfg.pitch_len_m - cfg.dup_depth_m
+            central = np.abs(y - cfg.pitch_wid_m / 2.0) <= cfg.keeper_half_width_m
+        alone = (close == 1) & (crowd == 1) & (crowd[rows, partner] == 1)
+        keepers = keeper[None, :] & keeper[partner] & (d[rows, cols[None, :], partner] < cfg.dup_radius_m)
+        pair = (known[a:b] & (alone | keepers)
+                & (home[partner] != home[None, :]) & (low_end | high_end) & central)
+        defender_home = np.where(low_end, home_low[a:b, None], ~home_low[a:b, None])
+        mark[a:b] = pair & (home[None, :] != defender_home)
+    min_len = max(1, int(round(cfg.dup_min_s * cfg.fps)))
+    out = players_m.copy()
+    for slot in range(s):
+        for a, b in _true_runs(mark[:, slot]):
+            if b - a >= min_len:
+                out[a:b, slot] = np.nan
+    return out
+
+
 def ball_left_pitch(ball_m: np.ndarray, usable: np.ndarray, cfg: Config) -> np.ndarray:
     """True on unseen frames whose last seen ball was over a line or about to cross one."""
     n = len(ball_m)
@@ -303,6 +358,7 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     ball_m = ball_n * scale
     players_m = drop_frozen(tr.players * scale.astype(np.float32),
                             int(round(cfg.ghost_frozen_s * cfg.fps)))
+    players_m = drop_keeper_doubles(players_m, tr.home, cfg)
 
     held = hold_last_position(players_m, int(round(cfg.player_hold_s * cfg.fps)))
     team = team_by_frame(players_m, tr.home, cfg)[:, :, None]

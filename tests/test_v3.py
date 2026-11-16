@@ -3,7 +3,7 @@ import numpy as np
 
 import synth
 from mtah.atd import Tracking
-from mtah.features import ball_left_pitch, build_features, drop_frozen
+from mtah.features import ball_left_pitch, build_features, drop_frozen, drop_keeper_doubles
 from mtah.model import log_emissions
 from mtah.tagging import empty_context
 from mtah.temporal import decode
@@ -71,3 +71,21 @@ def test_ball_kicked_out_is_dead_at_once_while_players_still_run():
 def test_without_the_exit_the_runners_keep_it_alive():
     labels, play = _clearance(use_fix=False)
     assert (labels[play + FPS:play + 3 * FPS] != "D").any()
+
+
+def test_a_keeper_followed_in_both_teams_keeps_only_the_defending_copy():
+    n = 3 * FPS
+    cfg = synth.small_config(n_frames=n, segments=[[0, n - 1]])
+    t = np.arange(n) / FPS
+    players = np.empty((n, 6, 2))
+    players[:, 0] = (30.0, 20.0)                                    # home defender
+    players[:, 1] = np.stack([5.0 + 0.3 * np.sin(t), 34.0 + 0.2 * np.cos(t)], 1)  # home keeper
+    players[:, 2] = (45.0, 40.0)
+    players[:, 3] = players[:, 1] + (2.5, 1.5)                      # its copy in an away slot
+    players[:, 4] = (70.0, 30.0)                                    # away field player
+    players[:, 5] = np.stack([100.0 + 0.3 * np.sin(t), 34.0 + 0.0 * t], 1)  # away keeper
+    players[:, 5, 1] += 0.01 * np.cos(t * 3)
+    home = np.array([True, True, True, False, False, False])
+    out = drop_keeper_doubles(players, home, cfg)
+    assert np.isnan(out[:, 3]).all()
+    assert np.isfinite(out[:, [0, 1, 2, 4, 5]]).all()

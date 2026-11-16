@@ -70,6 +70,15 @@ class Config:
     # it loses someone, typically the goalkeeper, while the real player goes on in another
     # slot. Frozen stretches this long are dropped as unknown.
     ghost_frozen_s: float = 1.0         # 0 switches it off
+    # Both keepers often wear similar colours, and the tracking then follows one goalkeeper
+    # twice, once in each team, a few metres apart. Two tracks of different teams that stay
+    # that close in front of a goal, with nobody else around, are one person: the keeper of
+    # the team defending that goal. The other track is dropped.
+    dup_fix: bool = True
+    dup_radius_m: float = 6.0           # the two tracks are this close
+    dup_clear_m: float = 15.0           # and nobody else is this close to either
+    dup_depth_m: float = 25.0           # within this distance of a goal line
+    dup_min_s: float = 2.0              # for at least this long
 
     # --- goalkeepers put in the wrong team by the tracking ---
     # A keeper wears a different kit from their team, so automatic team assignment can put

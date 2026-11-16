@@ -14,7 +14,7 @@ import numpy as np
 from mtah.atd import Tracking, load_tracking, norm_text
 from mtah.config import Config
 from mtah.errors import MtahError
-from mtah.features import drop_frozen, nearest_distance, team_by_frame
+from mtah.features import drop_frozen, drop_keeper_doubles, nearest_distance, team_by_frame
 from mtah.submission import ALLOWED, validate_csv
 from mtah.tagging import load_instances, team_sign
 
@@ -122,6 +122,7 @@ class Store:
             # The same players the model sees: frozen ghosts dropped, keepers in their team.
             players_m = drop_frozen(tr.players * scale.astype(np.float32),
                                     int(round(cfg.ghost_frozen_s * cfg.fps)))
+            players_m = drop_keeper_doubles(players_m, tr.home, cfg)
             team = team_by_frame(players_m, tr.home, cfg)
             tr = Tracking((players_m / scale.astype(np.float32)).astype(np.float32), tr.ball, tr.home)
             big = 1e6  # no cap here: the panel shows the real distance, however large
