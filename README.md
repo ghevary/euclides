@@ -9,7 +9,7 @@ video frame and the labels `H` (home in possession), `A` (away), `D` (dead ball)
 
 **Status.** The code is tested on synthetic data and its output passes the official
 validator at full match size. It has not been scored: there is no number yet to compare
-with the published baseline (`spellF1` 0.2433). Technical document: `docs/EUCLIDES.md`.
+with the published baseline (`spellF1` 0.2433). Technical document: `docs/Euclides.md`.
 
 ## Setup
 
@@ -103,7 +103,7 @@ A local web page to check the output by eye: the tactical video on the left, the
 number and its label on the right, the whole match as a coloured timeline underneath.
 
 ```powershell
-python -m viewer --data-dir E:\barca --labels submissions\EUCLIDES.csv
+python -m viewer --data-dir E:\barca --labels submissions\Euclides.csv
 ```
 
 On Windows, `run_viewer.bat` does the same without installing the package. The page opens
@@ -164,6 +164,6 @@ src/mtah/        config, loaders, features, model, temporal, submission, pipelin
 src/viewer/      read-only web viewer: server.py, data.py, static/ (page, script, style)
 src/vision/      dropped experiment: YOLOv8n ball detection (needs ultralytics; not used)
 tests/           synthetic match generator and tests
-docs/            technical document (EUCLIDES.md)
+docs/            technical document (Euclides.md)
 .githooks/       pre-commit hook that refuses data files
 ```

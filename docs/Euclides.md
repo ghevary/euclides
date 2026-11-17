@@ -1,6 +1,6 @@
 # Technical document
 
-Team: `EUCLIDES` · More than a Hack 2027, Phase 1 · repository: <https://github.com/ghevary/euclides>
+Team: `Euclides` · More than a Hack 2027, Phase 1 · repository: <https://github.com/ghevary/euclides>
 
 ## 1. Approach
 
@@ -134,7 +134,7 @@ this match appears in the code.
 
 ## 6. Results
 
-The submitted file `EUCLIDES.csv` passes the organisers' `validate_submission.py`.
+The submitted file `Euclides.csv` passes the organisers' `validate_submission.py`.
 
 | Label | Frames | Share |
 |---|---|---|
@@ -171,7 +171,7 @@ python -m venv .venv && source .venv/bin/activate      # Windows: .\.venv\Script
 python -m pip install -r requirements.txt
 python -m pip install -e .
 export MTAH_DATA_DIR=/path/to/bundle                   # the folder containing tactical/
-python -m mtah run --team EUCLIDES
+python -m mtah run --team Euclides
 ```
 
 Output SHA-256: `3242c0bf2d7cf8cb5cad7383d6135595b710fa6f069bbb325f497e890e30209a`, with

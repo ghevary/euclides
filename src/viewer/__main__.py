@@ -1,6 +1,6 @@
 """Possession Viewer.
 
-    python -m viewer --data-dir E:\\barca --labels submissions\\EUCLIDES.csv
+    python -m viewer --data-dir E:\\barca --labels submissions\\Euclides.csv
 
 Opens http://127.0.0.1:8000 with the tactical video on the left and the frame number and
 label on the right. Read-only: it never edits or scores labels.
