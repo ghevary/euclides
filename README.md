@@ -70,21 +70,29 @@ parser or the frame alignment is wrong, and nothing after it can be trusted.
 1. **Load** (`atd.py`). Row *i* of the tracking is video frame *i* (`frame_id - 1`). The
    loader refuses a file whose frame ids are not exactly `1..N`. Team membership comes from
    the metadata; track slots are never treated as players.
-2. **Evidence per frame** (`features.py`, `model.py`).
+2. **Clean the tracking** (`features.py`). Positions frozen to the millimetre for 1 s are
+   ghost copies and are dropped; a goalkeeper followed in both teams at once keeps only the
+   copy of the team defending that goal; a goalkeeper tracked in the other team's slots is
+   given back to the team whose goal they guard; a player the tracking loses in a duel
+   keeps their last position for 1.5 s.
+3. **Evidence per frame** (`features.py`, `model.py`).
    - *Which team:* distance from the ball to the nearest player of each side. The nearer
      side gets the evidence, weighted down when nobody is close to the ball.
-   - *Dead ball:* the ball outside the pitch, at rest for several seconds, or unseen for
-     longer than an occlusion lasts.
+   - *Dead ball:* the ball outside the pitch or lost on its way over a line, at rest for
+     several seconds, or unseen for longer than an occlusion lasts; and how fast the
+     players move (somebody always runs in open play). A ball lost at a player's feet or
+     in a crowd is hidden, not stopped.
    - *No ball:* gaps up to half a second are interpolated. Longer gaps give no evidence
      about the team, so the previous possession carries on.
-3. **Smart Tagging as a prior** (`tagging.py`). Attacking phases add a small push towards
-   their tagged team. Set pieces mark the seconds before a restart as probably dead. A half
-   that is graded from before its kick-off starts with a dead ball.
-4. **Temporal model** (`temporal.py`). A three-state hidden Markov model (H, A, D) decoded
+4. **Smart Tagging as a prior** (`tagging.py`). Attacking phases add a small push towards
+   their tagged team. A set piece is a stoppage back to the moment the players last stopped
+   running before it (the whistle). A half that is graded from before its kick-off starts
+   with a dead ball.
+5. **Temporal model** (`temporal.py`). A three-state hidden Markov model (H, A, D) decoded
    with Viterbi, one half at a time. Changing state costs something, so a deflection or a
    tracking glitch does not split a possession. Runs shorter than two seconds are absorbed
    by a neighbour.
-5. **Write and check** (`submission.py`). `X` outside the graded halves, never inside.
+6. **Write and check** (`submission.py`). `X` outside the graded halves, never inside.
 
 Every number is in `src/mtah/config.py` with a one-line reason. To try a variant, write a
 JSON file with the keys you want to change and pass `--config variant.json`.
@@ -112,9 +120,9 @@ carries a content security policy that allows nothing but itself.
 | Whole match at a glance | click or drag on the timeline; yellow marks are Smart Tagging set pieces |
 | Frame-level detail | the strip below shows 10 s each side, one column per frame |
 | Tracking | nearest player of each team to the ball, ball seen or not, overlay on the video (`O`), mini pitch |
-| Compare two submissions | "Bandingkan dengan CSV…" adds a second row and marks where they differ |
+| Compare two submissions | "Compare with CSV…" adds a second row and marks where they differ |
 | Full screen | `F` or double click; the frame number and label stay on screen |
-| Other video input | the source menu switches to the broadcast video; "Buka video…" plays any local file; `--video` serves a proxy |
+| Other video input | the source menu switches to the broadcast video; "Open video…" plays any local file; `--video` serves a proxy |
 
 **Frame accuracy.** A jump to frame N seeks to the middle of that frame, `(N + 0.5) / 25`
 seconds, and the number shown comes from `requestVideoFrameCallback`, the timestamp of the
@@ -145,7 +153,8 @@ was seen into labels, corrections or frame-specific constants is not (RULES.md).
 
 - Labels are produced by the algorithm. Nothing is labelled or corrected by hand.
 - The public five minutes of ground truth are not used for tuning.
-- The match data, and extracts of it, are not given to hosted AI tools. See `AGENTS.md`.
+- No video, tracking or label file of the match is uploaded to hosted AI tools. See
+  `AGENTS.md` and section 7 of the technical document.
 - No data in git: see `.gitignore` and `.githooks/pre-commit`.
 
 ## Layout
@@ -153,6 +162,7 @@ was seen into labels, corrections or frame-specific constants is not (RULES.md).
 ```
 src/mtah/        config, loaders, features, model, temporal, submission, pipeline, audit, cli
 src/viewer/      read-only web viewer: server.py, data.py, static/ (page, script, style)
+src/vision/      dropped experiment: YOLOv8n ball detection (needs ultralytics; not used)
 tests/           synthetic match generator and tests
 docs/            technical document (EUCLIDES.md)
 .githooks/       pre-commit hook that refuses data files
