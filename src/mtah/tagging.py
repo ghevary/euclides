@@ -35,10 +35,12 @@ class TagContext:
     dead: np.ndarray    # (n,) float in [0,1]: inside a pre-restart window
     team: np.ndarray    # (n,) float in [-1,1]: +1 home, -1 away, 0 no information
     forced: np.ndarray  # (n,) bool: graded frames before the kick-off of their half
+    restarts: np.ndarray = None  # frames where a set piece is taken (not the kick-offs of a half)
 
 
 def empty_context(n_frames: int) -> TagContext:
-    return TagContext(np.zeros(n_frames), np.zeros(n_frames), np.zeros(n_frames, dtype=bool))
+    return TagContext(np.zeros(n_frames), np.zeros(n_frames), np.zeros(n_frames, dtype=bool),
+                      np.zeros(0, dtype=np.int64))
 
 
 def load_instances(path: Path) -> List[Instance]:
@@ -86,6 +88,7 @@ def build_context(instances: List[Instance], cfg: Config, n_frames: Optional[int
     before_by_type = {norm_text(k): v for k, v in cfg.setpiece_dead_before_by_type.items()}
     after = int(round(cfg.setpiece_team_after_s * fps))
     kickoff_starts: List[int] = []
+    restarts: List[int] = []
 
     def clip(a: int, b: int):
         return max(0, a), max(0, min(n, b))
@@ -105,10 +108,13 @@ def build_context(instances: List[Instance], cfg: Config, n_frames: Optional[int
                 ctx.team[a:b] += sign
             if kind == kickoff:
                 kickoff_starts.append(start)
+            elif 0 <= restart < n:
+                restarts.append(restart)
         elif code in phases and sign:
             a, b = clip(int(round(inst.start_s * fps)), int(round(inst.end_s * fps)))
             ctx.team[a:b] += sign
     np.clip(ctx.team, -1.0, 1.0, out=ctx.team)
+    ctx.restarts = np.array(sorted(restarts), dtype=np.int64)
 
     if cfg.force_dead_before_kickoff:
         # A half that is graded from before its kick-off starts with a dead ball.

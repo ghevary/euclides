@@ -30,6 +30,24 @@ def _ramp(x, lo: float, hi: float):
     return np.clip((np.asarray(x, dtype=np.float64) - lo) / max(hi - lo, 1e-9), 0.0, 1.0)
 
 
+def since_whistle(restarts, slowness: np.ndarray, cfg: Config) -> np.ndarray:
+    """1 from the moment the players last stopped running before a restart, up to it."""
+    n = len(slowness)
+    out = np.zeros(n)
+    if restarts is None or len(restarts) == 0:
+        return out
+    running = (slowness < cfg.whistle_running).astype(np.int8)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], running, [0]))))
+    run_min = int(round(cfg.whistle_run_min_s * cfg.fps))
+    ends = np.array([b for a, b in zip(edges[::2], edges[1::2]) if b - a >= run_min], dtype=np.int64)
+    back = int(round(cfg.whistle_max_back_s * cfg.fps))
+    for r in restarts:
+        k = np.searchsorted(ends, r, side="right") - 1
+        if k >= 0 and r - ends[k] <= back:
+            out[ends[k]:r] = 1.0
+    return out
+
+
 def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
     """(n, 3) tempered log-likelihoods, rounded so libm differences cannot change the output."""
     # Which team: the nearer team gets the evidence, and only when somebody is near the ball.
@@ -54,11 +72,13 @@ def log_emissions(feat: Features, ctx: TagContext, cfg: Config) -> np.ndarray:
     still = _ramp(feat.still_run_s, cfg.still_neutral_s, cfg.still_dead_s) * gate
     seen_logit = (_logit(cfg.dead_prior) + cfg.dead_w_out * feat.oob
                   + cfg.dead_w_stationary * still + cfg.dead_w_players * slow)
-    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s) * gate
+    hidden = np.zeros(len(gate)) if feat.occluded is None else feat.occluded.astype(np.float64)
+    unseen = _ramp(feat.missing_run_s, cfg.missing_neutral_s, cfg.missing_dead_s) * gate * (1.0 - hidden)
     neutral = 1.0 / 3.0
     missing_logit = (_logit(neutral + (cfg.missing_dead_max - neutral) * unseen)
                      + 0.5 * cfg.dead_w_players * slow + cfg.dead_w_out * left)
-    dead_logit = np.where(feat.usable, seen_logit, missing_logit) + cfg.dead_w_setpiece * ctx.dead
+    dead_logit = (np.where(feat.usable, seen_logit, missing_logit) + cfg.dead_w_setpiece * ctx.dead
+                  + cfg.dead_w_whistle * since_whistle(ctx.restarts, feat.slowness, cfg))
     p_dead = _sigmoid(dead_logit)
 
     em = np.stack([(1.0 - p_dead) * p_home, (1.0 - p_dead) * (1.0 - p_home), p_dead], axis=1)

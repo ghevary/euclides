@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var LABELS = ["H", "A", "D", "X"];
   var CODE = { H: 0, A: 1, D: 2, X: 3 };
-  var NAMES = { H: "H · Home menguasai bola", A: "A · Away menguasai bola", D: "D · Bola mati", X: "X · Tidak dinilai" };
+  var NAMES = { H: "H · Home in possession", A: "A · Away in possession", D: "D · Dead ball", X: "X · Not graded" };
   var CLASS = { H: "lh", A: "la", D: "ld", X: "lx" };
   var COLORS = ["#e5484d", "#3b82f6", "#8b95a3", "#343b46"];
   var TRACK_BLOCK = 128;   // frames per tracking request
@@ -50,14 +50,14 @@
     var lines = text.split(/\r?\n/);
     if (lines.length && lines[lines.length - 1] === "") lines.pop();
     var head = (lines[0] || "").split(",").map(function (c) { return c.trim().toLowerCase(); });
-    if (head.length !== 2 || head[0] !== "frame" || head[1] !== "label") throw new Error("header harus 'frame,label'");
-    if (lines.length - 1 !== n) throw new Error((lines.length - 1) + " baris data; seharusnya " + n);
+    if (head.length !== 2 || head[0] !== "frame" || head[1] !== "label") throw new Error("header must be 'frame,label'");
+    if (lines.length - 1 !== n) throw new Error((lines.length - 1) + " data rows; expected " + n);
     var codes = new Uint8Array(n);
     for (var i = 0; i < n; i++) {
       var cells = lines[i + 1].split(",");
-      if (cells.length !== 2 || cells[0].trim() !== String(i)) throw new Error("baris " + i + ": kolom frame harus " + i);
+      if (cells.length !== 2 || cells[0].trim() !== String(i)) throw new Error("row " + i + ": frame column must be " + i);
       var code = CODE[cells[1].trim().toUpperCase()];
-      if (code === undefined) throw new Error("baris " + i + ": label harus H, A, D atau X");
+      if (code === undefined) throw new Error("row " + i + ": label must be H, A, D or X");
       codes[i] = code;
     }
     return codes;
@@ -145,10 +145,10 @@
   function halfName(frame) {
     var seg = S.meta.segments;
     for (var i = 0; i < seg.length; i++) {
-      if (frame < seg[i][0]) return i === 0 ? "Sebelum laga" : "Jeda";
-      if (frame <= seg[i][1]) return "Babak " + (i + 1);
+      if (frame < seg[i][0]) return i === 0 ? "Before the match" : "Halftime";
+      if (frame <= seg[i][1]) return "Half " + (i + 1);
     }
-    return "Setelah laga";
+    return "After the match";
   }
 
   // ------------------------------------------------------------------ panel
@@ -172,14 +172,14 @@
     hud.style.background = la ? COLORS[CODE[la]] : "transparent";
     if (la) {
       var s = S.A.segs[segIndex(S.A.segs, f)];
-      $("segA").textContent = "segmen " + s[0] + "–" + s[1] + " · " + ((s[1] - s[0] + 1) / S.fps).toFixed(2) + " s";
+      $("segA").textContent = "segment " + s[0] + "–" + s[1] + " · " + ((s[1] - s[0] + 1) / S.fps).toFixed(2) + " s";
     } else {
-      $("segA").textContent = S.synced && !S.A ? "Belum ada file label. Pakai “Buka CSV…”." : "";
+      $("segA").textContent = S.synced && !S.A ? "No label file yet. Use “Open CSV…”." : "";
     }
     if (S.B && S.synced) {
       var lb = LABELS[S.B.codes[f]];
       paintLabel($("labelB"), lb);
-      $("agree").textContent = la === null ? "" : (la === lb ? "sama dengan label utama" : "BERBEDA dari label utama");
+      $("agree").textContent = la === null ? "" : (la === lb ? "same as the main labels" : "DIFFERENT from the main labels");
     }
 
     var total = Math.max(1, S.total);
@@ -190,7 +190,7 @@
 
   function renderTracking() {
     var f = S.frame, item = S.synced ? trackAt(f) : null;
-    $("ballSeen").textContent = item ? (item.b ? "ya" : "tidak") : "–";
+    $("ballSeen").textContent = item ? (item.b ? "yes" : "no") : "–";
     $("distH").textContent = item && item.dh !== null ? item.dh.toFixed(1) + " m" : "–";
     $("distA").textContent = item && item.da !== null ? item.da.toFixed(1) + " m" : "–";
     var tag = "–";
@@ -245,9 +245,9 @@
 
   function showTrackState(meta) {
     var msg = "";
-    if (meta.tracking === "loading") msg = "Memuat tracking… (pertama kali butuh 1–2 menit, berikutnya dari cache)";
-    else if (meta.tracking === "error") msg = "Tracking gagal dimuat: " + meta.tracking_error;
-    else if (meta.tracking === "none") msg = "Tracking tidak dimuat.";
+    if (meta.tracking === "loading") msg = "Loading tracking… (1–2 minutes the first time, from the cache afterwards)";
+    else if (meta.tracking === "error") msg = "Tracking failed to load: " + meta.tracking_error;
+    else if (meta.tracking === "none") msg = "Tracking not loaded.";
     $("trackMsg").textContent = msg;
     $("trackMsg").classList.toggle("err", meta.tracking === "error");
   }
@@ -414,9 +414,9 @@
     var rows = "";
     if (S.A) {
       var sum = summarize(S.A);
-      rows += LABELS.map(function (l, i) { return "<tr><td>" + l + "</td><td>" + sum.counts[i] + " frame</td></tr>"; }).join("");
+      rows += LABELS.map(function (l, i) { return "<tr><td>" + l + "</td><td>" + sum.counts[i] + " frames</td></tr>"; }).join("");
       rows += "<tr><td>Possession (H/A)</td><td>" + sum.spells + "</td></tr>";
-      rows += "<tr><td>Rata-rata</td><td>" + sum.mean.toFixed(1) + " s</td></tr>";
+      rows += "<tr><td>Mean length</td><td>" + sum.mean.toFixed(1) + " s</td></tr>";
     }
     $("summary").innerHTML = rows;
     redrawAll();
@@ -425,17 +425,17 @@
   function loadCsvFile(file, slot) {
     var msg = $("fileMsg");
     msg.classList.remove("err");
-    msg.textContent = "Membaca " + file.name + "…";
+    msg.textContent = "Reading " + file.name + "…";
     file.text().then(function (text) {
       var codes = parseCsv(text, S.n);
       S[slot] = { name: file.name, codes: codes, segs: segmentsOf(codes) };
       computeDiff();
-      msg.textContent = slot === "A" ? "Label utama: " + file.name : "Pembanding: " + file.name +
-        " · " + (S.diff ? S.diff.length : 0) + " rentang berbeda";
+      msg.textContent = slot === "A" ? "Main labels: " + file.name : "Compared with: " + file.name +
+        " · " + (S.diff ? S.diff.length : 0) + " differing ranges";
       refreshLabelUi();
     }).catch(function (error) {
       msg.classList.add("err");
-      msg.textContent = file.name + " ditolak: " + error.message;
+      msg.textContent = file.name + " rejected: " + error.message;
     });
   }
 
@@ -503,9 +503,9 @@
     $("play").addEventListener("click", togglePlay);
     video.addEventListener("click", togglePlay);
     video.addEventListener("dblclick", toggleFullscreen);
-    video.addEventListener("play", function () { S.target = null; $("play").textContent = "⏸ Jeda"; });
+    video.addEventListener("play", function () { S.target = null; $("play").textContent = "⏸ Pause"; });
     video.addEventListener("pause", function () {
-      $("play").textContent = "▶ Putar";
+      $("play").textContent = "▶ Play";
       // Snap to a whole frame, so the picture and the frame number cannot disagree while paused.
       if (S.target === null && S.total) seekTo(Math.floor(video.currentTime * S.fps + 1e-3));
     });
@@ -524,7 +524,7 @@
     video.addEventListener("error", function () {
       var box = $("stageMsg");
       box.hidden = false;
-      box.textContent = "Browser tidak bisa memutar video ini. Coba Chrome atau Edge, atau buat proxy H.264 720p dengan jumlah frame yang sama dan jalankan dengan --video.";
+      box.textContent = "The browser cannot play this video. Try Chrome or Edge, or make an H.264 720p proxy with the same number of frames and start with --video.";
     });
     video.addEventListener("loadeddata", function () { $("stageMsg").hidden = true; });
 
@@ -612,7 +612,7 @@
 
     window.addEventListener("resize", redrawAll);
     document.addEventListener("fullscreenchange", function () {
-      $("fullscreen").textContent = document.fullscreenElement ? "Keluar layar penuh" : "⛶ Layar penuh";
+      $("fullscreen").textContent = document.fullscreenElement ? "Exit fullscreen" : "⛶ Fullscreen";
       setTimeout(redrawAll, 50);
     });
   }
@@ -628,7 +628,7 @@
       S.trackState = meta.tracking;
       if (res[1].name) S.A = setFromSegments(res[1].name, res[1].segments, S.n);
       S.tags = res[2].set_pieces || [];
-      var titles = { tactical: "Tactical (acuan label)", broadcast: "Broadcast (garis waktu sendiri)" };
+      var titles = { tactical: "Tactical (labels follow it)", broadcast: "Broadcast (own timeline)" };
       meta.sources.forEach(function (name) {
         var option = document.createElement("option");
         option.value = name; option.textContent = titles[name] || name;
@@ -641,7 +641,7 @@
       setSource("tactical", "/video/tactical");
     }).catch(function (error) {
       $("stageMsg").hidden = false;
-      $("stageMsg").textContent = "Gagal memuat data dari server lokal: " + error.message;
+      $("stageMsg").textContent = "Could not load data from the local server: " + error.message;
     });
   }
 

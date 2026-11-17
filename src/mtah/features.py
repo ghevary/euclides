@@ -21,6 +21,7 @@ class Features:
     speed: np.ndarray          # m/s net ball speed over about a second, NaN where unknown
     slowness: np.ndarray       # [-1,1]: +1 everybody walking, -1 somebody running, 0 unknown
     left: np.ndarray = None    # bool: ball unseen after it went over, or was heading over, a line
+    occluded: np.ndarray = None  # bool: ball unseen, last seen at a player's feet or in a crowd
 
 
 def rolling_mean(x: np.ndarray, window: int) -> np.ndarray:
@@ -134,6 +135,28 @@ def drop_keeper_doubles(players_m: np.ndarray, home: np.ndarray, cfg: Config,
             if b - a >= min_len:
                 out[a:b, slot] = np.nan
     return out
+
+
+def ball_hidden(ball_m, usable, held, cfg: Config) -> np.ndarray:
+    """Unseen ball that, when last seen, was at a player's feet or among several players.
+
+    Decided on the last frame it was seen and kept for cfg.occlude_max_s: the ball moves
+    with whoever hides it, so its last position soon says nothing.
+    """
+    n = len(ball_m)
+    idx = np.arange(n)
+    last = np.maximum.accumulate(np.where(usable, idx, -1))
+    nearest = np.full(n, np.inf)
+    crowd = np.zeros(n, dtype=np.int64)
+    for a in range(0, n, 20000):
+        z = min(n, a + 20000)
+        d = np.linalg.norm(held[a:z].astype(np.float64) - ball_m[a:z, None, :], axis=2)
+        d = np.where(np.isfinite(d), d, np.inf)
+        nearest[a:z] = d.min(axis=1)
+        crowd[a:z] = (d < cfg.crowd_radius_m).sum(axis=1)
+    covered = usable & ((nearest <= cfg.occlude_m) | (crowd >= cfg.crowd_players))
+    recent = (last >= 0) & (idx - last <= int(round(cfg.occlude_max_s * cfg.fps)))
+    return ~usable & recent & covered[np.maximum(last, 0)]
 
 
 def ball_left_pitch(ball_m: np.ndarray, usable: np.ndarray, cfg: Config) -> np.ndarray:
@@ -378,5 +401,6 @@ def build_features(tr: Tracking, cfg: Config) -> Features:
     missing_run_s = run_lengths(~usable) / float(cfg.fps)
     slowness = player_slowness(players_m, cfg)
     left = ball_left_pitch(ball_m, usable, cfg)
+    occluded = ball_hidden(ball_m, usable, held, cfg) & ~left
     return Features(seen, usable, d_home, d_away, oob, still_run_s, missing_run_s, speed, slowness,
-                    left)
+                    left, occluded)

@@ -102,6 +102,18 @@ class Config:
     dead_w_out: float = 4.0             # logit weights
     dead_w_stationary: float = 5.0
     dead_w_setpiece: float = 1.5
+    # The whistle stops play at once, long before the free kick is taken: players stop
+    # running, and somebody carries the ball to the spot. A tagged restart is therefore a
+    # stoppage back to the moment the players last stopped running before it.
+    dead_w_whistle: float = 3.0
+    whistle_max_back_s: float = 90.0    # look this far back for that moment
+    whistle_running: float = -0.5       # slowness below this: somebody is running
+    whistle_run_min_s: float = 1.0      # for at least this long
+    # A ball lost at a player's feet, or among several, is hidden by them: not out of play.
+    occlude_m: float = 2.0
+    occlude_max_s: float = 5.0          # a body hides a ball for a moment, not for long
+    crowd_radius_m: float = 5.0
+    crowd_players: int = 3
     emission_temperature: float = 0.3   # frames are strongly autocorrelated
 
     # --- Smart Tagging as soft context ---
